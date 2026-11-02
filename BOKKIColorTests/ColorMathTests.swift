@@ -261,3 +261,16 @@ final class CalibrationCatalogTests: XCTestCase {
         if case .success = CalibrationCatalog.chart(rows: 1, columns: 1, patches: none) { XCTFail("no colour") }
     }
 }
+
+final class CalibrationResultDecodeTests: XCTestCase {
+    func testResultDecodesPerLUTVerifyAndStaysOptional() throws {
+        let json = #"{"type":"result","seq":1,"result":{"verifyLUTs":[{"id":"a","name":"A","average":1.5,"patches":[{"name":"red","deltaE":2.0}]}]}}"#
+        let m = try JSONDecoder().decode(CalibrationEnvelope.self, from: Data(json.utf8))
+        let lut = try XCTUnwrap(m.result?.verifyLUTs?.first)
+        XCTAssertEqual(lut.name, "A")
+        XCTAssertEqual(lut.average, 1.5)
+        XCTAssertEqual(lut.patches?.first?.deltaE, 2.0)
+        let old = try JSONDecoder().decode(CalibrationEnvelope.self, from: Data(#"{"type":"result","seq":2,"result":{"averageAfter":1}}"#.utf8))
+        XCTAssertNil(old.result?.verifyLUTs)
+    }
+}

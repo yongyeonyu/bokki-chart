@@ -276,6 +276,9 @@ private struct CalibrationResultView: View {
             }
             ScrollView {
                 LazyVStack(spacing: 0) {
+                    if let luts = result.verifyLUTs, !luts.isEmpty {
+                        lutSection(luts)
+                    }
                     ForEach(Array((result.patches ?? []).enumerated()), id: \.offset) { _, patch in
                         row(patch)
                         Divider().overlay(.white.opacity(0.15))
@@ -295,6 +298,34 @@ private struct CalibrationResultView: View {
         case "skin": "Skin"
         case "balanced": "Balanced"
         case let other: other ?? "—"
+        }
+    }
+
+    /// Verify error per LUT, worst first; tap a LUT for its patches.
+    private func lutSection(_ luts: [CalibrationResult.LUTVerify]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Verify by LUT").font(.headline).padding(.vertical, 8)
+            ForEach(Array(luts.sorted { ($0.average ?? 0) > ($1.average ?? 0) }.enumerated()), id: \.offset) { _, lut in
+                DisclosureGroup {
+                    ForEach(Array((lut.patches ?? []).enumerated()), id: \.offset) { _, p in
+                        HStack {
+                            Text(p.name ?? "—").font(.callout)
+                            Spacer()
+                            Text(Self.number(p.deltaE)).font(.callout).monospacedDigit()
+                        }
+                        .padding(.vertical, 4)
+                    }
+                } label: {
+                    HStack {
+                        Text(lut.name ?? lut.id ?? "—")
+                        Spacer()
+                        Text("ΔE " + Self.number(lut.average)).monospacedDigit()
+                    }
+                }
+                .padding(.vertical, 6)
+                Divider().overlay(.white.opacity(0.15))
+            }
+            Text("Patches").font(.headline).padding(.top, 16).padding(.bottom, 8)
         }
     }
 

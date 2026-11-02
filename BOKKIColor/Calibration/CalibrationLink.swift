@@ -106,6 +106,19 @@ struct CalibrationResult: Codable, Equatable {
     var skinAverageAfter: Double?
     var verifyAverageAfter: Double?
     var patches: [Patch]?
+    /// CALIBVERIFY1102: the verify error per LUT, when the CAM verified more than one.
+    var verifyLUTs: [LUTVerify]?
+
+    struct LUTVerify: Codable, Equatable {
+        struct Patch: Codable, Equatable {
+            var name: String?
+            var deltaE: Double?
+        }
+        var id: String?
+        var name: String?
+        var average: Double?
+        var patches: [Patch]?
+    }
 }
 
 struct CalibrationPatch: Codable {
