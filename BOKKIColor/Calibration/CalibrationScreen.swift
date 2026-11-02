@@ -47,10 +47,12 @@ struct CalibrationScreen: View {
             }
         }
         .onAppear {
-            link.chartLookup = { id in ChartCatalog.references[id] ?? store.charts.first { $0.id == id } }
-            link.availableCharts = {
-                ChartCatalog.referenceIDs + store.charts.filter { $0.layoutRects == nil }.map(\.id)
-            }
+            // Built once per visit: every grid chart (references, grays, skin tones, ...) plus the custom ones.
+            let entries = CalibrationCatalog.entries(custom: store.charts)
+            let byID = Dictionary(entries.map { ($0.info.id, $0.chart) }, uniquingKeysWith: { first, _ in first })
+            link.chartLookup = { byID[$0] }
+            link.availableCharts = { entries.map(\.info.id) }
+            link.catalog = { entries.map(\.info) }
             link.start()
             lock.start(lockBrightness: true)
         }
@@ -88,43 +90,93 @@ struct CalibrationScreen: View {
     }
 
     private func status(size: CGSize) -> some View {
-        VStack(spacing: 16) {
+        let wide = size.width > size.height * 1.2
+        return VStack(spacing: 28) {
+            header
+            if case .waiting = link.state {
+                if wide {
+                    HStack(alignment: .center, spacing: 40) {
+                        qrCard(size: size)
+                        VStack(alignment: .leading, spacing: 20) { pairingHint; checklist }
+                            .frame(maxWidth: 420)
+                    }
+                } else {
+                    qrCard(size: size)
+                    pairingHint.multilineTextAlignment(.center)
+                    checklist.frame(maxWidth: 520)
+                }
+            } else {
+                checklist.frame(maxWidth: 520)
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 32).padding(.vertical, 56)
+    }
+
+    /// State icon, title and one line of help for the current link state.
+    @ViewBuilder
+    private var header: some View {
+        VStack(spacing: 10) {
             switch link.state {
             case .waiting:
                 if let name = link.lastFinished {
                     Label(String(format: tr("%@ 캘리브레이션 완료 — 결과는 BOKKI CAM에서 확인하세요."), name), systemImage: "checkmark.circle.fill")
                         .font(.callout.weight(.semibold)).foregroundStyle(.green)
+                        .multilineTextAlignment(.center)
                 }
-                Text(tr("BOKKI CAM 연결 대기 중")).font(.title2.bold())
-                // Big enough for BOKKI CAM to read from about 1 m; white quiet zone around the code.
-                let side = min(min(size.width, size.height) * 0.5, max(size.width, size.height) * 0.36)
-                if let qr = Self.qrImage(link.pairingPayload) {
-                    Image(uiImage: qr).interpolation(.none).resizable().scaledToFit()
-                        .frame(width: side, height: side)
-                        .padding(side * 0.08).background(.white)
-                        .accessibilityLabel(tr("BOKKI CAM 연결 QR 코드"))
-                }
-                Text(tr("BOKKI CAM 사진 화면에 이 QR을 비추면 이 화면에 바로 연결됩니다.\n또는 BOKKI CAM에서 캘리브레이션을 시작하세요 (Bluetooth · Wi-Fi 켜기)."))
-                    .multilineTextAlignment(.center).foregroundStyle(.white.opacity(0.7))
+                Text(tr("BOKKI CAM 연결 대기 중")).font(.title.bold())
             case .connected(let name):
-                Image(systemName: "link.circle.fill").font(.system(size: 56)).foregroundStyle(.green)
-                Text(String(format: tr("%@ 연결됨"), name)).font(.title2.bold())
+                Image(systemName: "checkmark.circle.fill").font(.system(size: 56)).foregroundStyle(.green)
+                Text(String(format: tr("%@ 연결됨"), name)).font(.title.bold())
                 Text(tr("BOKKI CAM이 타깃을 띄울 때까지 화면을 카메라 쪽으로 두세요."))
-                    .foregroundStyle(.white.opacity(0.7))
+                    .foregroundStyle(.white.opacity(0.7)).multilineTextAlignment(.center)
             case .reconnecting(let name):
                 ProgressView().tint(.white).controlSize(.large)
-                Text(String(format: tr("%@ 재연결 대기 중"), name)).font(.title2.bold())
+                Text(String(format: tr("%@ 재연결 대기 중"), name)).font(.title.bold())
                 Text(tr("연결이 잠시 끊겼습니다. BOKKI CAM이 자동으로 다시 연결합니다."))
-                    .foregroundStyle(.white.opacity(0.7))
+                    .foregroundStyle(.white.opacity(0.7)).multilineTextAlignment(.center)
             }
-            Label(tr("BOKKI CAM 화면에 네 모서리의 흰 사각형이 모두 들어오게 맞추세요. 화면을 정면에서, 프레임을 거의 채우게 찍어야 합니다."),
-                  systemImage: "viewfinder")
-                .font(.callout.weight(.semibold)).multilineTextAlignment(.center).padding(.top, 12)
-            Text(tr("True Tone · Night Shift · 자동 밝기를 끄고, 화면을 닦고, 조명이 화면에 비치지 않게 두세요."))
-                .font(.footnote).foregroundStyle(.orange)
         }
-        .foregroundStyle(.white)
-        .padding(40)
+    }
+
+    /// Big enough for BOKKI CAM to read from about 1 m; white quiet zone around the code.
+    @ViewBuilder
+    private func qrCard(size: CGSize) -> some View {
+        let side = min(min(size.width, size.height) * 0.5, max(size.width, size.height) * 0.36)
+        if let qr = Self.qrImage(link.pairingPayload) {
+            Image(uiImage: qr).interpolation(.none).resizable().scaledToFit()
+                .frame(width: side, height: side)
+                .padding(side * 0.08).background(.white, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .accessibilityLabel(tr("BOKKI CAM 연결 QR 코드"))
+        }
+    }
+
+    private var pairingHint: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(tr("BOKKI CAM 사진 화면에 이 QR을 비추세요.")).font(.headline)
+            Text(tr("또는 BOKKI CAM에서 캘리브레이션을 시작하세요 (Bluetooth · Wi-Fi 켜기).")).foregroundStyle(.white.opacity(0.7))
+        }
+    }
+
+    /// Setup steps as one grouped card, the way Settings lists them.
+    private var checklist: some View {
+        VStack(spacing: 0) {
+            checkRow("viewfinder", tr("네 모서리의 흰 사각형이 모두 프레임에 들어오게, 화면을 정면에서 거의 가득 채워 찍으세요."), .white)
+            Divider().overlay(.white.opacity(0.15))
+            checkRow("sun.max.fill", tr("True Tone · Night Shift · 자동 밝기 끄기"), .orange)
+            Divider().overlay(.white.opacity(0.15))
+            checkRow("sparkles", tr("화면을 닦고 조명이 비치지 않게 하기"), .yellow)
+        }
+        .background(.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func checkRow(_ symbol: String, _ text: String, _ tint: Color) -> some View {
+        HStack(alignment: .center, spacing: 14) {
+            Image(systemName: symbol).font(.title3).foregroundStyle(tint).frame(width: 28)
+            Text(text).font(.callout).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
     }
 
     @ViewBuilder

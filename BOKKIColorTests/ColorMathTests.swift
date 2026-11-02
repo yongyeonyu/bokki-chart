@@ -208,3 +208,56 @@ final class DatasetTests: XCTestCase {
         XCTAssertEqual(chart.patches.count, 2)
     }
 }
+
+final class ColorEditTests: XCTestCase {
+    /// Sharma, Wu, Dalal (2005) test pairs.
+    func testDeltaE2000MatchesPublishedPairs() {
+        XCTAssertEqual(ColorMath.deltaE2000(Vec3(50, 2.6772, -79.7751), Vec3(50, 0, -82.7485)), 2.0425, accuracy: 1e-3)
+        XCTAssertEqual(ColorMath.deltaE2000(Vec3(50, 3.1571, -77.2803), Vec3(50, 0, -82.7485)), 2.8615, accuracy: 1e-3)
+        XCTAssertEqual(ColorMath.deltaE2000(Vec3(50, 2.5, 0), Vec3(50, 0, -2.5)), 4.3065, accuracy: 1e-3)
+    }
+
+    func testHSVRoundTrip() {
+        for rgb in [Vec3(0.2, 0.4, 0.8), Vec3(1, 0, 0), Vec3(0.5, 0.5, 0.5), Vec3(0.9, 0.7, 0.1)] {
+            let back = ColorMath.hsvToRGB(ColorMath.rgbToHSV(rgb))
+            XCTAssertEqual(back.x, rgb.x, accuracy: 1e-9)
+            XCTAssertEqual(back.y, rgb.y, accuracy: 1e-9)
+            XCTAssertEqual(back.z, rgb.z, accuracy: 1e-9)
+        }
+    }
+
+    func testLChRoundTrip() {
+        let lab = Vec3(62, -34, 21)
+        let back = ColorMath.lchToLab(ColorMath.labToLCh(lab))
+        XCTAssertEqual(back.y, lab.y, accuracy: 1e-9)
+        XCTAssertEqual(back.z, lab.z, accuracy: 1e-9)
+    }
+}
+
+final class CalibrationCatalogTests: XCTestCase {
+    func testCatalogCoversGraySkinAndReferenceGrids() {
+        let entries = CalibrationCatalog.entries(custom: [])
+        let ids = Set(entries.map(\.info.id))
+        XCTAssertTrue(ids.contains("cc24_after2014"))
+        XCTAssertEqual(Set(entries.map(\.info.category)).isSuperset(of: ["reference", "gray", "skin", "hue", "wb"]), true)
+        XCTAssertEqual(ids.count, entries.count, "ids are unique")
+        for e in entries { XCTAssertEqual(e.info.count, e.info.rows * e.info.columns, e.info.id) }
+    }
+
+    func testPatchesTargetRoundTripsAndValidates() throws {
+        let target = CalibrationTarget.patches(rows: 1, columns: 2, patches: [
+            CalibrationCustomPatch(name: "a", p3: [0.5, 0.5, 0.5], lab: nil),
+            CalibrationCustomPatch(name: nil, p3: nil, lab: [65, 18, 17]),
+        ])
+        let data = try JSONEncoder().encode(target)
+        XCTAssertEqual(try JSONDecoder().decode(CalibrationTarget.self, from: data), target)
+
+        guard case let .patches(rows, columns, patches) = target else { return XCTFail() }
+        if case .failure = CalibrationCatalog.chart(rows: rows, columns: columns, patches: patches) { XCTFail("valid") }
+        if case .success = CalibrationCatalog.chart(rows: 2, columns: 2, patches: patches) { XCTFail("count mismatch") }
+        let bad = [CalibrationCustomPatch(name: nil, p3: [1.2, 0, 0], lab: nil)]
+        if case .success = CalibrationCatalog.chart(rows: 1, columns: 1, patches: bad) { XCTFail("p3 out of range") }
+        let none = [CalibrationCustomPatch(name: nil, p3: nil, lab: nil)]
+        if case .success = CalibrationCatalog.chart(rows: 1, columns: 1, patches: none) { XCTFail("no colour") }
+    }
+}

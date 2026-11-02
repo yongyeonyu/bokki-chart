@@ -531,6 +531,16 @@
         }
       }
     },
+    "BOKKI CAM 사진 화면에 이 QR을 비추세요.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Point BOKKI CAM's Photo screen at this QR code."
+          }
+        }
+      }
+    },
     "BOKKI CAM 연결 QR 코드": {
       "localizations": {
         "en": {
@@ -821,6 +831,16 @@
         }
       }
     },
+    "Lab · LCh · RGB · HSV로 세밀하게 조정합니다. 체커 화면에 바로 반영되며, 상단 '저장'으로 커스텀 체커로 보관하세요.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fine-tune in Lab, LCh, RGB or HSV. Changes show on the chart right away; use Save at the top to keep a custom chart."
+          }
+        }
+      }
+    },
     "McCamy 1976 원본 (광원 C)": {
       "localizations": {
         "en": {
@@ -907,6 +927,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "SMPTE Color Bars"
+          }
+        }
+      }
+    },
+    "True Tone · Night Shift · 자동 밝기 끄기": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn off True Tone, Night Shift and Auto-Brightness"
           }
         }
       }
@@ -1121,12 +1151,42 @@
         }
       }
     },
+    "감소": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Decrease"
+          }
+        }
+      }
+    },
     "감지된 문제 없음": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "No issues detected"
+          }
+        }
+      }
+    },
+    "개멋 밖, 클립됨": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Out of gamut, clipped"
+          }
+        }
+      }
+    },
+    "거칠게": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Coarse"
           }
         }
       }
@@ -1201,6 +1261,16 @@
         }
       }
     },
+    "기준": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Original"
+          }
+        }
+      }
+    },
     "김치": {
       "localizations": {
         "en": {
@@ -1221,6 +1291,16 @@
         }
       }
     },
+    "네 모서리의 흰 사각형이 모두 프레임에 들어오게, 화면을 정면에서 거의 가득 채워 찍으세요.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Get all four white corner squares in the frame, shooting straight on and filling most of it."
+          }
+        }
+      }
+    },
     "노랑": {
       "localizations": {
         "en": {
@@ -1237,6 +1317,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Exposure · WB reference (L* ≈ 49.5)"
+          }
+        }
+      }
+    },
+    "다시 실행": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Redo"
           }
         }
       }
@@ -1307,6 +1397,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Adds digital 0 / 255 reference points"
+          }
+        }
+      }
+    },
+    "또는 BOKKI CAM에서 캘리브레이션을 시작하세요 (Bluetooth · Wi-Fi 켜기).": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Or start calibration in BOKKI CAM (turn on Bluetooth and Wi-Fi)."
           }
         }
       }
@@ -1561,6 +1661,16 @@
         }
       }
     },
+    "보통": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Normal"
+          }
+        }
+      }
+    },
     "보호필름·반사 제거": {
       "localizations": {
         "en": {
@@ -1661,6 +1771,16 @@
         }
       }
     },
+    "비트 심도": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bit depth"
+          }
+        }
+      }
+    },
     "빨강": {
       "localizations": {
         "en": {
@@ -1717,6 +1837,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Save as New"
+          }
+        }
+      }
+    },
+    "색 모델": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Color model"
           }
         }
       }
@@ -2027,6 +2157,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Actual Proportions"
+          }
+        }
+      }
+    },
+    "실행 취소": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Undo"
           }
         }
       }
@@ -2371,6 +2511,16 @@
         }
       }
     },
+    "정밀": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fine"
+          }
+        }
+      }
+    },
     "정밀 튜닝": {
       "localizations": {
         "en": {
@@ -2387,6 +2537,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Control Center / Settings › Battery"
+          }
+        }
+      }
+    },
+    "조정 간격": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Step size"
           }
         }
       }
@@ -2467,6 +2627,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Intermediate Skin"
+          }
+        }
+      }
+    },
+    "증가": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Increase"
           }
         }
       }
@@ -2587,6 +2757,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Green"
+          }
+        }
+      }
+    },
+    "초정밀": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ultra fine"
           }
         }
       }
@@ -2991,6 +3171,16 @@
         }
       }
     },
+    "현재": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current"
+          }
+        }
+      }
+    },
     "현재 밝기": {
       "localizations": {
         "en": {
@@ -3017,6 +3207,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Fill Screen"
+          }
+        }
+      }
+    },
+    "화면을 닦고 조명이 비치지 않게 하기": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wipe the screen and avoid reflections on it"
           }
         }
       }

@@ -48,9 +48,13 @@ enum DisplayShortcut {
     /// as `.bokkishortcut` in the project because macOS/iCloud import (and remove) loose `.shortcut` files.
     static func shareableFile(_ name: String) -> URL? {
         guard let source = Bundle.main.url(forResource: name, withExtension: "bokkishortcut") else { return nil }
-        let out = FileManager.default.temporaryDirectory.appendingPathComponent(name + ".shortcut")
-        try? FileManager.default.removeItem(at: out)
-        return (try? FileManager.default.copyItem(at: source, to: out)) != nil ? out : nil
+        let fm = FileManager.default
+        let out = fm.temporaryDirectory.appendingPathComponent(name + ".shortcut")
+        // Called from a view body: skip the copy when the same file is already there.
+        func size(_ url: URL) -> Int? { (try? fm.attributesOfItem(atPath: url.path)[.size]) as? Int }
+        if let existing = size(out), existing == size(source) { return out }
+        try? fm.removeItem(at: out)
+        return (try? fm.copyItem(at: source, to: out)) != nil ? out : nil
     }
 
     /// Runs a shortcut by name; Shortcuts comes back to this app when it finishes.
@@ -82,20 +86,17 @@ final class DisplayLock {
     }
 
     func start(lockBrightness: Bool) {
-        guard !isActive else { return }
+        if isActive {
+            // Already running: only follow a change of the brightness setting.
+            if lockBrightness != (savedBrightness != nil) {
+                if lockBrightness { engageBrightnessLock() } else { releaseBrightnessLock() }
+                refreshWarnings()
+            }
+            return
+        }
         isActive = true
         UIApplication.shared.isIdleTimerDisabled = true
-        if lockBrightness, let screen {
-            savedBrightness = screen.brightness
-            screen.brightness = Self.target
-            let nc = NotificationCenter.default
-            // Re-apply when the user or the system changes brightness, or when we return to foreground.
-            for name in [UIScreen.brightnessDidChangeNotification, UIApplication.didBecomeActiveNotification] {
-                observers.append(nc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                    MainActor.assumeIsolated { self?.reapply() }
-                })
-            }
-        }
+        if lockBrightness { engageBrightnessLock() }
         refreshWarnings()
         timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.refreshWarnings() }
@@ -105,13 +106,30 @@ final class DisplayLock {
     func stop() {
         guard isActive else { return }
         isActive = false
-        observers.forEach(NotificationCenter.default.removeObserver)
-        observers.removeAll()
+        releaseBrightnessLock()
         timer?.invalidate()
         timer = nil
+        UIApplication.shared.isIdleTimerDisabled = false
+    }
+
+    private func engageBrightnessLock() {
+        guard let screen else { return }
+        savedBrightness = screen.brightness
+        screen.brightness = Self.target
+        let nc = NotificationCenter.default
+        // Re-apply when the user or the system changes brightness, or when we return to foreground.
+        for name in [UIScreen.brightnessDidChangeNotification, UIApplication.didBecomeActiveNotification] {
+            observers.append(nc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.reapply() }
+            })
+        }
+    }
+
+    private func releaseBrightnessLock() {
+        observers.forEach(NotificationCenter.default.removeObserver)
+        observers.removeAll()
         if let savedBrightness, let screen { screen.brightness = savedBrightness }
         savedBrightness = nil
-        UIApplication.shared.isIdleTimerDisabled = false
     }
 
     private func reapply() {

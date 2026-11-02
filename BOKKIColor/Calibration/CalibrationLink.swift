@@ -20,14 +20,19 @@ enum CalibrationProtocol {
 enum CalibrationTarget: Equatable, Codable {
     case chart(id: String)
     case flat(p3: [Double])
+    /// CALIB1102: a grid of colours the CAM defines itself.
+    case patches(rows: Int, columns: Int, patches: [CalibrationCustomPatch])
 
-    private enum CodingKeys: String, CodingKey { case kind, id, p3 }
+    private enum CodingKeys: String, CodingKey { case kind, id, p3, rows, columns, patches }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         switch try c.decode(String.self, forKey: .kind) {
         case "chart": self = .chart(id: try c.decode(String.self, forKey: .id))
         case "flat": self = .flat(p3: try c.decode([Double].self, forKey: .p3))
+        case "patches":
+            self = .patches(rows: try c.decode(Int.self, forKey: .rows), columns: try c.decode(Int.self, forKey: .columns),
+                            patches: try c.decode([CalibrationCustomPatch].self, forKey: .patches))
         case let other:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: c, debugDescription: "unknown target \(other)")
         }
@@ -42,6 +47,11 @@ enum CalibrationTarget: Equatable, Codable {
         case .flat(let p3):
             try c.encode("flat", forKey: .kind)
             try c.encode(p3, forKey: .p3)
+        case .patches(let rows, let columns, let patches):
+            try c.encode("patches", forKey: .kind)
+            try c.encode(rows, forKey: .rows)
+            try c.encode(columns, forKey: .columns)
+            try c.encode(patches, forKey: .patches)
         }
     }
 }
@@ -105,6 +115,8 @@ struct CalibrationPatch: Codable {
     var column: Int
     var p3: [Double]
     var lab: [Double]?
+    /// The colour is outside Display P3 and `p3` is clipped (CALIB1102).
+    var clipped: Bool?
 }
 
 /// One JSON message; field names follow the protocol document. Unknown keys are ignored.
@@ -124,6 +136,10 @@ struct CalibrationEnvelope: Codable {
     var layout: CalibrationLayout?
     var patches: [CalibrationPatch]?
     var message: String?
+    /// CALIB1102: `describe` request / `described` answer.
+    var id: String?
+    var catalog: [CalibrationChartInfo]?
+    var info: CalibrationChartInfo?
 }
 
 /// Just enough of a message to ack a `captured` whose other fields did not decode.
@@ -175,14 +191,18 @@ final class CalibrationLink: NSObject {
     /// Set by the screen: resolves a chart id (built-in or custom) and the canvas orientation.
     var chartLookup: (String) -> PatchChart? = { _ in nil }
     var availableCharts: () -> [String] = { [] }
+    /// Every grid chart with its title and category, for `catalog` (CALIB1102).
+    var catalog: () -> [CalibrationChartInfo] = { [] }
     /// Current drawing size in points, so `shown` can report the orientation the grid was drawn in.
-    var canvasSize: CGSize = UIScreen.main.bounds.size
+    var canvasSize: CGSize = .zero
 
     @ObservationIgnored private let peer = MCPeerID(displayName: UIDevice.current.name)
     @ObservationIgnored private var session: MCSession?
     @ObservationIgnored private var advertiser: MCNearbyServiceAdvertiser?
     @ObservationIgnored private var camera: MCPeerID?
     @ObservationIgnored private var lastShown: (seq: Int, data: Data)?
+    /// Seq of the newest `show` being drawn; a delayed `shown` for an older one is dropped.
+    @ObservationIgnored private var latestShowSeq: Int?
     @ObservationIgnored private var rejoinTimeout: Task<Void, Never>?
     @ObservationIgnored private var stallWatch: Task<Void, Never>?
     @ObservationIgnored private let log = Logger(subsystem: "com.bokki.checker", category: "calibration")
@@ -256,6 +276,7 @@ final class CalibrationLink: NSObject {
         camera = nil
         frame = nil
         lastShown = nil
+        latestShowSeq = nil
     }
 
     private static func makeToken() -> String {
@@ -287,11 +308,11 @@ final class CalibrationLink: NSObject {
             // After a rejoin the repeated `show` is drawn again, so `shown` waits for a clean frame.
             lastShown = nil
             state = .connected(m.device ?? peerID.displayName)
-            let native = UIScreen.main.nativeBounds.size
+            let native = Self.screen?.nativeBounds.size ?? .zero
             let display = CalibrationDisplayInfo(brightnessLocked: true, widthPx: Int(native.width), heightPx: Int(native.height))
             send(CalibrationEnvelope(type: "ready", pv: CalibrationProtocol.version, app: "BOKKI Chart",
                                      device: Self.modelIdentifier, display: display, charts: availableCharts(),
-                                     features: ["handshake", "results"]), to: peerID)
+                                     features: ["handshake", "results", "catalog", "custom"]), to: peerID)
         case "show":
             guard let seq = m.seq, let target = m.target else {
                 send(CalibrationEnvelope(type: "error", seq: m.seq, message: "show needs seq and target"), to: peerID)
@@ -323,6 +344,14 @@ final class CalibrationLink: NSObject {
                 guard peerID == camera else { return }
                 send(CalibrationEnvelope(type: "ack", seq: seq), to: peerID)
             }
+        case "catalog":
+            send(CalibrationEnvelope(type: "catalog", catalog: catalog()), to: peerID)
+        case "describe":
+            guard let id = m.id, let chart = chartLookup(id), let info = catalog().first(where: { $0.id == id }) else {
+                send(CalibrationEnvelope(type: "error", seq: m.seq, message: "unknown chart \(m.id ?? "")"), to: peerID)
+                return
+            }
+            send(CalibrationEnvelope(type: "described", seq: m.seq, patches: patchList(chart), id: id, info: info), to: peerID)
         case "end":
             log.info("end")
             if case .connected(let name) = state { lastFinished = name }
@@ -333,6 +362,7 @@ final class CalibrationLink: NSObject {
     }
 
     private func show(_ target: CalibrationTarget, seq: Int, step: CalibrationStep?, to peerID: MCPeerID) {
+        latestShowSeq = seq
         let landscape = canvasSize.width > canvasSize.height
         switch target {
         case .flat(let p3):
@@ -351,17 +381,35 @@ final class CalibrationLink: NSObject {
             // Fill the screen the long way: a landscape card on a portrait screen is turned 90°.
             let chart = base.isLandscape != landscape ? base.rotatedClockwise : base
             frame = CalibrationFrame(target: target, chart: chart, step: step)
-            let patches = chart.patches.enumerated().map { i, p in
-                let e = p.spec.encoded(in: .displayP3)
-                let lab = p.spec.labD50
-                return CalibrationPatch(index: i, name: p.name, row: i / chart.columns, column: i % chart.columns,
-                                        p3: [e.x, e.y, e.z], lab: [lab.x, lab.y, lab.z])
-            }
+            let patches = patchList(chart)
             let layout = CalibrationLayout(rows: chart.rows, columns: chart.columns,
                                            marginFraction: CalibrationProtocol.marginFraction,
                                            gapFraction: CalibrationProtocol.gapFraction,
                                            orientation: landscape ? "landscape" : "portrait")
             reply(CalibrationEnvelope(type: "shown", seq: seq, target: target, layout: layout, patches: patches), seq: seq, to: peerID)
+        case .patches(let rows, let columns, let custom):
+            switch CalibrationCatalog.chart(rows: rows, columns: columns, patches: custom) {
+            case .failure(let e):
+                send(CalibrationEnvelope(type: "error", seq: seq, message: e.message), to: peerID)
+            case .success(let chart):
+                // The CAM chose rows and columns for this screen, so the grid is drawn as sent.
+                frame = CalibrationFrame(target: target, chart: chart, step: step)
+                let layout = CalibrationLayout(rows: rows, columns: columns, marginFraction: CalibrationProtocol.marginFraction,
+                                               gapFraction: CalibrationProtocol.gapFraction,
+                                               orientation: landscape ? "landscape" : "portrait")
+                reply(CalibrationEnvelope(type: "shown", seq: seq, target: target, layout: layout, patches: patchList(chart)),
+                      seq: seq, to: peerID)
+            }
+        }
+    }
+
+    private func patchList(_ chart: PatchChart) -> [CalibrationPatch] {
+        chart.patches.enumerated().map { i, p in
+            let e = p.spec.encoded(in: .displayP3)
+            let lab = p.spec.labD50
+            return CalibrationPatch(index: i, name: p.name, row: i / chart.columns, column: i % chart.columns,
+                                    p3: [e.x, e.y, e.z], lab: [lab.x, lab.y, lab.z],
+                                    clipped: p.spec.outOfGamut(in: .displayP3) ? true : nil)
         }
     }
 
@@ -369,7 +417,7 @@ final class CalibrationLink: NSObject {
     private func reply(_ message: CalibrationEnvelope, seq: Int, to peerID: MCPeerID) {
         Task {
             try? await Task.sleep(for: .milliseconds(120))
-            guard peerID == camera, let data = try? JSONEncoder().encode(message) else { return }
+            guard peerID == camera, latestShowSeq == seq, let data = try? JSONEncoder().encode(message) else { return }
             lastShown = (seq, data)
             try? session?.send(data, toPeers: [peerID], with: .reliable)
         }
@@ -380,6 +428,10 @@ final class CalibrationLink: NSObject {
         do { try session?.send(data, toPeers: [peerID], with: .reliable) } catch { lastError = error.localizedDescription }
     }
 
+    private static var screen: UIScreen? {
+        UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.screen }.first
+    }
+
     private static let modelIdentifier: String = {
         var info = utsname()
         uname(&info)
@@ -388,10 +440,15 @@ final class CalibrationLink: NSObject {
 
     // MARK: Delegate hops (MultipeerConnectivity calls back on its own queues)
 
-    fileprivate func invited(by peerID: MCPeerID, via advertiser: MCNearbyServiceAdvertiser,
+    fileprivate func invited(by peerID: MCPeerID, via advertiser: MCNearbyServiceAdvertiser, context: Data?,
                              handler: @escaping (Bool, MCSession?) -> Void) {
         // One camera at a time, and only through the advertiser carrying the current token.
         guard advertiser === self.advertiser else { handler(false, nil); return }
+        // A camera that sends a token (invitation context) must send this screen's token.
+        if let context, !context.isEmpty, String(data: context, encoding: .utf8) != token {
+            log.info("invite from \(peerID.displayName, privacy: .public) declined: wrong token")
+            handler(false, nil); return
+        }
         if let camera {
             let stillConnecting = camera == peerID && session?.connectedPeers.contains(peerID) != true
             guard camera.displayName == peerID.displayName, !stillConnecting else {
@@ -431,7 +488,7 @@ final class CalibrationLink: NSObject {
     fileprivate func received(_ data: Data, in session: MCSession, from peerID: MCPeerID) {
         guard session === self.session, peerID == camera else { return }
         handle(data, from: peerID)
-        watchForStall()
+        if camera != nil { watchForStall() }  // `end` already went back to waiting
     }
 
     private func watchForStall() {
@@ -439,7 +496,7 @@ final class CalibrationLink: NSObject {
         stallWatch?.cancel()
         stallWatch = Task { [weak self] in
             try? await Task.sleep(for: CalibrationLink.stallWindow)
-            guard let self, !Task.isCancelled, self.frame != nil else { return }
+            guard let self, !Task.isCancelled, self.frame != nil, case .connected = self.state else { return }
             self.log.info("camera quiet for \(CalibrationLink.stallWindow, privacy: .public)")
             self.stalled = true
         }
@@ -450,7 +507,7 @@ extension CalibrationLink: MCNearbyServiceAdvertiserDelegate {
     nonisolated func advertiser(_ advertiser: MCNearbyServiceAdvertiser, didReceiveInvitationFromPeer peerID: MCPeerID,
                                 withContext context: Data?, invitationHandler: @escaping (Bool, MCSession?) -> Void) {
         nonisolated(unsafe) let handler = invitationHandler
-        Task { @MainActor in self.invited(by: peerID, via: advertiser, handler: handler) }
+        Task { @MainActor in self.invited(by: peerID, via: advertiser, context: context, handler: handler) }
     }
 }
 

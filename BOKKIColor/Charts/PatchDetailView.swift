@@ -32,7 +32,18 @@ struct PatchDetailView: View {
                     }
                 }
                 if editable {
-                    PatchTuningSection(patch: $patch, original: original, space: current)
+                    Section {
+                        NavigationLink {
+                            PatchColorEditor(patch: $patch, original: original, space: current)
+                        } label: {
+                            Label(tr("색상 편집"), systemImage: "slider.horizontal.3")
+                        }
+                        if let original, patch.tuned == true {
+                            Button(tr("이 패치 기본값으로"), role: .destructive) { patch = original }
+                        }
+                    } footer: {
+                        Text(tr("Lab · LCh · RGB · HSV로 세밀하게 조정합니다. 체커 화면에 바로 반영되며, 상단 '저장'으로 커스텀 체커로 보관하세요."))
+                    }
                 }
                 ForEach([current] + OutputSpace.allCases.filter { $0 != current }) { space in
                     let info = ColorInfo(patch.spec, space: space)
